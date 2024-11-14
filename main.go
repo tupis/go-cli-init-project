@@ -84,9 +84,9 @@ func setupProjectStructure() {
 
 // createExampleController cria um controlador de exemplo
 func createExampleController() {
-	controllerContent := `import { Request, Response } from 'express';
-import { getUserService } from '@modules/user/UserServiceFactory';
-import { UserService } from '@modules/user/services/UserService';
+	controllerContent := `import { Request, Response } from "express";
+import { getUserService } from "@modules/user/UserServiceFactory";
+import { UserService } from "@modules/user/services/UserService";
 
 export class UserController {
   constructor(private readonly userService: UserService = getUserService()) {}
@@ -112,8 +112,8 @@ export class UserController {
 
 // createFactories configura os arquivos de fábrica
 func createFactories() {
-	userServiceFactory := `import { UserRepository } from './repositories/UserRepository';
-import { UserService } from './services/UserService';
+	userServiceFactory := `import { UserRepository } from "./repositories/UserRepository";
+import { UserService } from "./services/UserService";
 
 export function getUserService(): UserService {
   const userRepository = new UserRepository();
@@ -193,26 +193,24 @@ JWT_SECRET=your_jwt_secret
 
 // createMainFile gera o arquivo principal do servidor com Express e configuração básica
 func createMainFile(useGraphQL bool, useWebSocket bool) {
-	mainFileContent := `import 'reflect-metadata';
-import 'dotenv/config';
-import express from 'express';
-import { AppRouter } from '@http/routes';
-import { AppDataSource } from '@shared/database/dataSource';
-import { Logger } from '@shared/logger';
-import { authMiddleware } from '@shared/middleware/auth';
+	mainFileContent := `import "reflect-metadata";
+import "dotenv/config";
+import express from "express";
+import { AppRouter } from "@http/routes";
+import { AppDataSource } from "@shared/database/dataSource";
+import { Logger } from "@shared/logger";
+import { authMiddleware } from "@shared/middleware/auth";
 `
 
 	if useGraphQL {
-		mainFileContent += `
-import { graphqlHTTP } from 'express-graphql';
-import { buildSchema } from 'graphql';
+		mainFileContent += `import { graphqlHTTP } from "express-graphql";
+import { buildSchema } from "graphql";
 `
 	}
 
 	if useWebSocket {
-		mainFileContent += `
-import { Server } from 'socket.io';
-import http from 'http';
+		mainFileContent += `import { Server } from "socket.io";
+import http from "http";
 `
 	}
 
@@ -223,7 +221,7 @@ const PORT = process.env.PORT || 3000;
 
 app.use(express.json());
 app.use(authMiddleware);
-app.use('/api', AppRouter);
+app.use("/api", AppRouter);
 `
 
 	if useGraphQL {
@@ -236,11 +234,11 @@ const schema = buildSchema(
 
 const root = {
   hello: () => {
-    return 'Hello world!';
+    return "Hello world!";
   },
 };
 
-app.use('/graphql', graphqlHTTP({
+app.use("/graphql", graphqlHTTP({
   schema: schema,
   rootValue: root,
   graphiql: true,
@@ -253,10 +251,10 @@ app.use('/graphql', graphqlHTTP({
 const server = http.createServer(app);
 const io = new Server(server);
 
-io.on('connection', (socket) => {
-  Logger.info('Novo cliente conectado');
-  socket.on('disconnect', () => {
-    Logger.info('Cliente desconectado');
+io.on("connection", (socket) => {
+  Logger.info("Novo cliente conectado");
+  socket.on("disconnect", () => {
+    Logger.info("Cliente desconectado");
   });
 });
 `
@@ -269,19 +267,19 @@ AppDataSource.initialize()
 	if useWebSocket {
 		mainFileContent += `
     server.listen(PORT, () => {
-      Logger.info('Servidor rodando na porta ' + PORT);
+      Logger.info("Servidor rodando na porta " + PORT);
     });`
 	} else {
 		mainFileContent += `
     app.listen(PORT, () => {
-      Logger.info('Servidor rodando na porta ' + PORT);
+      Logger.info("Servidor rodando na porta " + PORT);
     });`
 	}
 
 	mainFileContent += `
   })
   .catch((error) => {
-    Logger.error('Erro ao conectar ao banco de dados', error);
+    Logger.error("Erro ao conectar ao banco de dados", error);
   });
 `
 
@@ -364,11 +362,59 @@ func setupLintingAndFormattingConfig() {
 
 	prettierConfig := `{
   "semi": true,
-  "singleQuote": true,
+  "singleQuote": false,
   "trailingComma": "all",
   "endOfLine": "auto"
 }`
 	os.WriteFile(".prettierrc", []byte(prettierConfig), 0644)
+
+
+	eslintConfigMjs := `import typescriptEslint from "@typescript-eslint/eslint-plugin";
+import prettier from "eslint-plugin-prettier";
+import globals from "globals";
+import tsParser from "@typescript-eslint/parser";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import js from "@eslint/js";
+import { FlatCompat } from "@eslint/eslintrc";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const compat = new FlatCompat({
+    baseDirectory: __dirname,
+    recommendedConfig: js.configs.recommended,
+    allConfig: js.configs.all
+});
+
+export default [
+    ...compat.extends("eslint:recommended", "plugin:@typescript-eslint/recommended", "prettier"),
+    {
+        plugins: {
+            "@typescript-eslint": typescriptEslint,
+            prettier,
+        },
+
+        languageOptions: {
+            globals: {
+                ...globals.node,
+            },
+
+            parser: tsParser,
+            ecmaVersion: 12,
+            sourceType: "module",
+
+            parserOptions: {
+                project: "./tsconfig.json",
+            },
+        },
+
+        rules: {
+            "prettier/prettier": "error",
+        },
+    },
+];`
+
+	os.WriteFile("eslint.config.mjs", []byte(eslintConfigMjs), 0644)
 }
 
 // setupPackageJSONScripts atualiza os scripts do package.json para desenvolvimento e produção
@@ -389,14 +435,14 @@ func setupPackageJSONScripts() {
 
 // setupTypeORMConfig cria o dataSource.ts para TypeORM usando a nova API DataSource
 func setupTypeORMConfig() {
-	typeORMConfig := `import 'reflect-metadata';
-import { DataSource } from 'typeorm';
-import { User } from '@modules/user/entities/User';
+	typeORMConfig := `import "reflect-metadata";
+import { DataSource } from "typeorm";
+import { User } from "@modules/user/entities/User";
 
 export const AppDataSource = new DataSource({
-  type: 'postgres',
+  type: "postgres",
   host: process.env.DB_HOST,
-  port: parseInt(process.env.DB_PORT || '5432', 10),
+  port: parseInt(process.env.DB_PORT || "5432", 10),
   username: process.env.DB_USER,
   password: process.env.DB_PASSWORD,
   database: process.env.DB_NAME,
@@ -413,12 +459,12 @@ export const AppDataSource = new DataSource({
 func setupDatabaseConfigs(options map[string]bool) {
 	// Para Redis
 	if options["redis"] {
-		redisConfig := `import { createClient } from 'redis';
+		redisConfig := `import { createClient } from "redis";
 
 export const redisClient = createClient();
 
-redisClient.on('error', (err) => {
-  console.error('Erro no cliente Redis', err);
+redisClient.on("error", (err) => {
+  console.error("Erro no cliente Redis", err);
 });
 
 redisClient.connect();
@@ -428,12 +474,12 @@ redisClient.connect();
 
 	// Para MongoDB (se selecionado)
 	if options["mongodb"] {
-		mongoConfig := `import { MongoClient } from 'mongodb';
+		mongoConfig := `import { MongoClient } from "mongodb";
 
-const url = 'mongodb://localhost:27017';
+const url = "mongodb://localhost:27017";
 const client = new MongoClient(url);
 
-export const mongoClient = client.db('mydb');
+export const mongoClient = client.db("mydb");
 `
 		os.WriteFile("src/shared/database/mongodb.ts", []byte(mongoConfig), 0644)
 	}
@@ -441,16 +487,16 @@ export const mongoClient = client.db('mydb');
 
 // setupLogger configura um logger básico usando Winston
 func setupLogger() {
-	loggerContent := `import { createLogger, format, transports } from 'winston';
+	loggerContent := `import { createLogger, format, transports } from "winston";
 
 export const Logger = createLogger({
-  level: 'info',
+  level: "info",
   format: format.combine(
     format.colorize(),
     format.timestamp({
-      format: 'YYYY-MM-DD HH:mm:ss ',
+      format: "YYYY-MM-DD HH:mm:ss ",
     }),
-    format.printf((info) => info.timestamp + info.level + ': ' + info.message),
+    format.printf((info) => info.timestamp + info.level + ": " + info.message),
   ),
   transports: [new transports.Console()],
 });
@@ -460,17 +506,19 @@ export const Logger = createLogger({
 
 // setupJWT cria utilitários para JWT
 func setupJWT() {
-	jwtContent := `import jwt from 'jsonwebtoken';
+	jwtContent := `import jwt from "jsonwebtoken";
 
 export function generateToken(payload: object): string {
-  return jwt.sign(payload, process.env.JWT_SECRET as string, { expiresIn: '1h' });
+  return jwt.sign(payload, process.env.JWT_SECRET as string, { 
+	expiresIn: "1h" 
+  });
 }
 
 export function verifyToken(token: string): jwt.JwtPayload | string {
   try {
     return jwt.verify(token, process.env.JWT_SECRET as string);
   } catch (error) {
-    throw new Error('Token inválido');
+    throw new Error("Invalid Token: " + error);
   }
 }
 `
@@ -479,15 +527,17 @@ export function verifyToken(token: string): jwt.JwtPayload | string {
 
 // setupAuthMiddleware cria o middleware de autenticação
 func setupAuthMiddleware() {
-	authMiddlewareContent := `import { Request, Response, NextFunction } from 'express';
-import { verifyToken } from '@utils/jwt';
+	authMiddlewareContent := `/* eslint-disable @typescript-eslint/no-explicit-any */
+/* eslint-disable @typescript-eslint/no-unused-vars */
+import { Request, Response, NextFunction } from "express";
+import { verifyToken } from "@utils/jwt";
 
 export function authMiddleware(req: Request, res: Response, next: NextFunction): void {
-  const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.split(' ')[1];
+  const authHeader = req.headers["authorization"];
+  const token = authHeader && authHeader.split(" ")[1];
 
   if (!token) {
-    res.status(401).json({ message: 'Token não fornecido' });
+    res.status(401).json({ message: "Token não fornecido" });
 	return;
   }
 
@@ -496,7 +546,7 @@ export function authMiddleware(req: Request, res: Response, next: NextFunction):
     (req as any).user = decoded;
     next();
   } catch (error) {
-    res.status(403).json({ message: 'Token inválido' });
+    res.status(403).json({ message: "Token inválido" });
 	return;
   }
 }
@@ -507,19 +557,19 @@ export function authMiddleware(req: Request, res: Response, next: NextFunction):
 // setupExampleModules cria exemplos de entidades, repositórios, serviços e rotas com autenticação
 func setupExampleModules() {
 	// Entidade
-	entityContent := `import { Entity, PrimaryGeneratedColumn, Column, BeforeInsert } from 'typeorm';
-import bcrypt from 'bcryptjs';
-import { BaseSchema } from '@shared/database/entities/BaseEntity';
+	entityContent := `import { Entity, Column, BeforeInsert } from "typeorm";
+import bcrypt from "bcryptjs";
+import { BaseSchema } from "@shared/database/entities/BaseEntity";
 
 @Entity()
 export class User extends BaseSchema {
-  @Column({ type: 'varchar', length: 255 })
+  @Column({ type: "varchar", length: 255 })
   name: string;
 
-  @Column({ type: 'varchar', length: 255, unique: true })
+  @Column({ type: "varchar", length: 255, unique: true })
   email: string;
 
-  @Column({ type: 'varchar', length: 255 })
+  @Column({ type: "varchar", length: 255 })
   password: string;
 
   @BeforeInsert()
@@ -532,9 +582,9 @@ export class User extends BaseSchema {
 	os.WriteFile("src/modules/user/entities/User.ts", []byte(entityContent), 0644)
 
 	// Repositório
-	repositoryContent := `import { Repository } from 'typeorm';
-import { User } from '../entities/User';
-import { AppDataSource } from '@shared/database/dataSource';
+	repositoryContent := `import { Repository } from "typeorm";
+import { User } from "../entities/User";
+import { AppDataSource } from "@shared/database/dataSource";
 
 export class UserRepository extends Repository<User> {
   constructor() {
@@ -550,18 +600,21 @@ export class UserRepository extends Repository<User> {
 	os.WriteFile("src/modules/user/repositories/UserRepository.ts", []byte(repositoryContent), 0644)
 
 	// Serviço
-	serviceContent := `import { UserRepository } from '../repositories/UserRepository';
-import { User } from '../entities/User';
-import bcrypt from 'bcryptjs';
-import { generateToken } from '@utils/jwt';
+	serviceContent := `import { UserRepository } from "../repositories/UserRepository";
+import { User } from "../entities/User";
+import bcrypt from "bcryptjs";
+import { generateToken } from "@utils/jwt";
 
 export class UserService {
   constructor(private userRepository: UserRepository) {}
 
   async createUser(data: Partial<User>): Promise<User> {
-    const existingUser = await this.userRepository.findByEmail(data.email as string);
+    const existingUser = await this.userRepository.findByEmail(
+	  data.email as string
+	);
+
     if (existingUser) {
-      throw new Error('Usuário já existe com este email');
+      throw new Error("Usuário já existe com este email");
     }
 
     const user = this.userRepository.create(data);
@@ -572,15 +625,18 @@ export class UserService {
     return await this.userRepository.find();
   }
 
-  async authenticateUser(data: { email: string; password: string }): Promise<string> {
+  async authenticateUser(data: { 
+	email: string; 
+	password: string 
+  }): Promise<string> {
     const user = await this.userRepository.findByEmail(data.email);
     if (!user) {
-      throw new Error('Usuário não encontrado');
+      throw new Error("Usuário não encontrado");
     }
 
     const isPasswordValid = await bcrypt.compare(data.password, user.password);
     if (!isPasswordValid) {
-      throw new Error('Senha inválida');
+      throw new Error("Senha inválida");
     }
 
     const token = generateToken({ id: user.id, email: user.email });
@@ -592,19 +648,19 @@ export class UserService {
 	os.WriteFile("src/modules/user/services/UserService.ts", []byte(serviceContent), 0644)
 
 	// Rotas
-	routesContent := `import { Router } from 'express';
-import { UserController } from '@http/controllers/UserController';
+	routesContent := `import { Router } from "express";
+import { UserController } from "@http/controllers/UserController";
 
 const userController = new UserController();
 const router = Router();
 
-router.post('/register', (req, res) => {
+router.post("/register", (req, res) => {
   userController.create(req, res);
 });
-router.post('/login', (req, res) => {
+router.post("/login", (req, res) => {
   userController.login(req, res);
 });
-router.get('/', (req, res) => {
+router.get("/", (req, res) => {
   userController.getAll(req, res);
 });
 
@@ -613,12 +669,12 @@ export default router;
 	os.WriteFile("src/http/routes/userRoutes.ts", []byte(routesContent), 0644)
 
 	// Rotas principais
-	indexRoutesContent := `import { Router } from 'express';
-import userRoutes from './userRoutes';
+	indexRoutesContent := `import { Router } from "express";
+import userRoutes from "./userRoutes";
 
 export const AppRouter = Router();
 
-AppRouter.use('/users', userRoutes);
+AppRouter.use("/users", userRoutes);
 `
 	os.WriteFile("src/http/routes/index.ts", []byte(indexRoutesContent), 0644)
 }
