@@ -156,6 +156,178 @@ export class BaseSchema extends BaseEntity {
 	os.WriteFile("src/shared/database/entities/BaseEntity.ts", []byte(baseEntityContent), 0644)
 }
 
+func setupBaseRepository() {
+	os.MkdirAll("src/shared/database/repository", 0755)
+	os.MkdirAll("src/types", 0755)
+	os.MkdirAll("src/utils", 0755)
+
+	globalTypesContent := `//import { UserRequest as User } from './user-request.interface';
+
+export {};
+
+declare global {
+  type Id = string | number;
+  // type UserRequest = User;
+}
+`
+	os.WriteFile("src/types/global.d.ts", []byte(globalTypesContent), 0644)
+
+
+	findCriteriaContent := `import { FindOptionsWhere } from "typeorm";
+export type FindCriteria<T> = FindOptionsWhere<T> | FindOptionsWhere<T>[];
+	`
+
+	os.WriteFile("src/types/find-criteria.interface.ts", []byte(findCriteriaContent), 0644)
+
+	findRepositoryFactoryContent := `import {
+  FindOneOptions as TypeOrmFindOneOptions,
+  FindManyOptions as TypeOrmFindManyOptions,
+  SaveOptions,
+  DeepPartial,
+} from "typeorm";
+import { FindCriteria } from "./find-criteria.interface";
+import { BaseSchema } from "@shared/database/entities/BaseEntity";
+
+export type FindOneOptions<T> = Omit<TypeOrmFindOneOptions<T>, "where">;
+export type FindManyOptions<T> = Omit<TypeOrmFindManyOptions<T>, "where">;
+
+export interface RepositoryFactory<T extends BaseSchema> {
+  findAll(options?: FindManyOptions<T>): Promise<T[]>;
+  find(criteria: FindCriteria<T>, options?: FindManyOptions<T>): Promise<T[]>;
+  findOne(
+    criteria: FindCriteria<T>,
+    options?: FindOneOptions<T>,
+  ): Promise<T | null>;
+  findById(id: Id, options?: FindOneOptions<T>): Promise<T | null>;
+  findOneOrFail(
+    criteria: FindCriteria<T>,
+    options?: FindOneOptions<T>,
+  ): Promise<T>;
+  findByIdOrFail(id: Id, options?: FindOneOptions<T>): Promise<T>;
+  create(entity: DeepPartial<T>, options?: SaveOptions): Promise<T>;
+  update(id: Id, entity: T, options?: SaveOptions): Promise<T>;
+  delete(id: Id): Promise<void>;
+  restore(id: Id): Promise<void>;
+}
+`
+
+	os.WriteFile("src/types/repository-factory.ts", []byte(findRepositoryFactoryContent), 0644)
+
+	whereIdContent := `/* eslint-disable @typescript-eslint/no-explicit-any */
+import { isUUID as isUUIDClassValidator } from "class-validator";
+
+function isInt(value: string | number) {
+  if (value === null) return false;
+
+  if (typeof value === "number") return Number.isInteger(value);
+  return /^\d+$/.test(value);
+}
+function isUUID(value: string | number) {
+  return isUUIDClassValidator(value);
+}
+
+function isUlid(value: string | number) {
+  if (typeof value === "number") return false;
+  if (value.length !== 26) return false;
+  return true;
+}
+
+export function whereId(id: string | number): any {
+  if (isInt(id)) return { id: Number(id) };
+  if (isUUID(id)) return { uuid: String(id) };
+  if (isUlid(id)) return { publicId: String(id) };
+
+  return { id: Number(id) };
+}
+`
+	os.WriteFile("src/utils/where-id.ts", []byte(whereIdContent), 0644)
+
+	baseRepositoryContent := `import { FindCriteria } from "src/types/find-criteria.interface";
+import {
+  FindManyOptions,
+  FindOneOptions,
+  RepositoryFactory,
+} from "src/types/repository-factory";
+import { whereId } from "src/utils/where-id";
+import { Repository, DeepPartial } from "typeorm";
+import { BaseSchema } from "@shared/database/entities/BaseEntity";
+
+export class BaseRepository<T extends BaseSchema>
+  implements RepositoryFactory<T>
+{
+  constructor(
+    private readonly repository: Repository<T>,
+    private entity?: string,
+  ) {
+    this.entity = entity || repository.metadata.tableName;
+    this.entity = this.entity.replace(/_/g, " ").toUpperCase();
+  }
+
+  async findAll(options?: FindManyOptions<T>): Promise<T[]> {
+    return this.repository.find(options);
+  }
+
+  async find(
+    criteria: FindCriteria<T>,
+    options?: FindManyOptions<T>,
+  ): Promise<T[]> {
+    return this.repository.find({ where: criteria, ...options });
+  }
+
+  async findOne(
+    criteria: FindCriteria<T>,
+    options?: FindOneOptions<T>,
+  ): Promise<T | null> {
+    return this.repository.findOne({ where: criteria, ...options });
+  }
+
+  async findById(id: Id, options?: FindOneOptions<T>): Promise<T | null> {
+    return this.findOne(whereId(id), options);
+  }
+
+  async findOneOrFail(
+    criteria: FindCriteria<T>,
+    options?: FindOneOptions<T>,
+  ): Promise<T> {
+    const result = await this.findOne(criteria, options);
+    if (result === null) {
+      throw new Error(this.entity + '	 not found');
+    }
+    return result;
+  }
+
+  async findByIdOrFail(id: Id, options?: FindOneOptions<T>): Promise<T> {
+    return this.findOneOrFail(whereId(id), options);
+  }
+
+  async create(data: DeepPartial<T>): Promise<T> {
+    const entity = this.repository.create(data);
+    await this.repository.save(entity);
+    return entity;
+  }
+
+  async update(id: Id, data: DeepPartial<T>): Promise<T> {
+    const entity = await this.findByIdOrFail(id);
+    this.repository.merge(entity, data);
+    await this.repository.save(entity);
+    return entity;
+  }
+
+  async delete(id: Id): Promise<void> {
+    const entity = await this.findByIdOrFail(id);
+    await this.repository.softRemove(entity);
+  }
+
+  async restore(id: Id): Promise<void> {
+    const entity = await this.findByIdOrFail(id, { withDeleted: true });
+    await this.repository.restore(entity.id);
+  }
+}
+`
+
+	os.WriteFile("src/shared/database/repository/BaseRepository.ts", []byte(baseRepositoryContent), 0644)
+}
+
 // createGitignore cria o arquivo .gitignore
 func createGitignore() {
 	gitignoreContent := `node_modules/
@@ -200,6 +372,7 @@ import { AppRouter } from "@http/routes";
 import { AppDataSource } from "@shared/database/dataSource";
 import { Logger } from "@shared/logger";
 import { authMiddleware } from "@shared/middleware/auth";
+
 `
 
 	if useGraphQL {
@@ -214,9 +387,7 @@ import http from "http";
 `
 	}
 
-	mainFileContent += `
-
-const app = express();
+	mainFileContent += `const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(express.json());
@@ -247,8 +418,7 @@ app.use("/graphql", graphqlHTTP({
 	}
 
 	if useWebSocket {
-		mainFileContent += `
-const server = http.createServer(app);
+		mainFileContent += `const server = http.createServer(app);
 const io = new Server(server);
 
 io.on("connection", (socket) => {
@@ -260,21 +430,20 @@ io.on("connection", (socket) => {
 `
 	}
 
-	mainFileContent += `
-AppDataSource.initialize()
+	mainFileContent += `AppDataSource.initialize()
   .then(() => {`
 
-	if useWebSocket {
-		mainFileContent += `
-    server.listen(PORT, () => {
-      Logger.info("Servidor rodando na porta " + PORT);
-    });`
-	} else {
-		mainFileContent += `
-    app.listen(PORT, () => {
-      Logger.info("Servidor rodando na porta " + PORT);
-    });`
-	}
+  if useWebSocket {
+    mainFileContent += `
+    server`
+  } else {
+    mainFileContent += `
+    app`
+  }
+
+  mainFileContent += `.listen(PORT, () => {
+    Logger.info("Servidor rodando na porta " + PORT);
+  });`
 
 	mainFileContent += `
   })
@@ -683,7 +852,7 @@ AppRouter.use("/users", userRoutes);
 func installDependencies(options map[string]bool) {
 	// Dependências base
 	runCommand("npm", "install", "express", "reflect-metadata", "winston", "dotenv", "bcryptjs", "jsonwebtoken")
-	runCommand("npm", "install", "-D", "typescript", "ts-node", "ts-node-dev", "tsx" ,"@types/node", "@types/express", "@types/bcryptjs", "@types/jsonwebtoken", "eslint", "prettier", "husky", "@typescript-eslint/parser", "@typescript-eslint/eslint-plugin", "eslint-config-prettier", "eslint-plugin-prettier")
+	runCommand("npm", "install", "-D", "typescript", "ts-node", "ts-node-dev", "tsx" ,"@types/node", "@types/express", "@types/bcryptjs", "@types/jsonwebtoken", "eslint", "prettier", "husky", "@typescript-eslint/parser", "@typescript-eslint/eslint-plugin", "eslint-config-prettier", "eslint-plugin-prettier", "class-validator", "class-transformer")
 
 	// Instala dependências opcionais com base nas escolhas do usuário
 	if options["typeorm"] {
@@ -729,6 +898,7 @@ func setupExpressProject(projectName string) {
 	createFactories()
 
 	setupBaseEntity()
+	setupBaseRepository()
 
 	setupExampleModules()
 
