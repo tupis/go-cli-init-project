@@ -90,24 +90,50 @@ import { UserService } from "@modules/user/services/UserService";
 
 export class UserController {
   constructor(private readonly userService: UserService = getUserService()) {}
-
-  async create(request: Request, response: Response): Promise<Response> {
-    const user = await this.userService.createUser(request.body);
-    return response.status(201).json(user);
-  }
-
   async getAll(request: Request, response: Response): Promise<Response> {
     const users = await this.userService.getAllUsers();
     return response.status(200).json(users);
   }
-
-  async login(request: Request, response: Response): Promise<Response> {
-    const token = await this.userService.authenticateUser(request.body);
-    return response.status(200).json({ token });
+  async getById(request: Request, response: Response): Promise<Response> {
+    const user = await this.userService.getUserById(request.params.id as Id);
+    return response.status(200).json(user);
   }
-}
-`
+
+  async getByEmail(request: Request, response: Response): Promise<Response> {
+    const user = await this.userService.getUserByEmail(request.params.email);
+    return response.status(200).json(user);
+  }
+
+  async deleteById(request: Request, response: Response): Promise<Response> {
+    await this.userService.deleteUserById(request.params.id as Id);
+    return response.status(204).send();
+  }
+}`
 	os.WriteFile("src/http/controllers/UserController.ts", []byte(controllerContent), 0644)
+
+  authControllerContent := `import { Request, Response } from "express";
+import { getUserService } from "@modules/user/UserServiceFactory";
+import { UserService } from "@modules/user/services/UserService";
+import { LoginUserDto } from "@modules/user/dto/login-user.dto";
+import { RegisterUserDto } from "@modules/user/dto/register-user.dto";
+
+export class AuthController {
+  constructor(private readonly userService: UserService = getUserService()) {}
+  async login(request: Request, response: Response): Promise<Response> {
+    const accessToken = await this.userService.authenticateUser(
+      request.body as LoginUserDto,
+    );
+    return response.status(200).json({ accessToken });
+  }
+
+  async register(request: Request, response: Response): Promise<Response> {
+    const user = await this.userService.createUser(
+      request.body as RegisterUserDto,
+    );
+    return response.status(201).json(user);
+  }
+}`
+	os.WriteFile("src/http/controllers/AuthController.ts", []byte(authControllerContent), 0644)
 }
 
 // createFactories configura os arquivos de fábrica
@@ -213,8 +239,7 @@ export interface RepositoryFactory<T extends BaseSchema> {
 
 	os.WriteFile("src/types/repository-factory.ts", []byte(findRepositoryFactoryContent), 0644)
 
-	whereIdContent := `/* eslint-disable @typescript-eslint/no-explicit-any */
-import { isUUID as isUUIDClassValidator } from "class-validator";
+	whereIdContent := `import { isUUID as isUUIDClassValidator } from "class-validator";
 
 function isInt(value: string | number) {
   if (value === null) return false;
@@ -226,16 +251,11 @@ function isUUID(value: string | number) {
   return isUUIDClassValidator(value);
 }
 
-function isUlid(value: string | number) {
-  if (typeof value === "number") return false;
-  if (value.length !== 26) return false;
-  return true;
-}
-
-export function whereId(id: string | number): any {
+export function whereId(
+  id: string | number,
+): { id: number } | { uuid: string } {
   if (isInt(id)) return { id: Number(id) };
   if (isUUID(id)) return { uuid: String(id) };
-  if (isUlid(id)) return { publicId: String(id) };
 
   return { id: Number(id) };
 }
@@ -325,7 +345,9 @@ export class BaseRepository<T extends BaseSchema>
 }
 `
 
-	os.WriteFile("src/shared/database/repository/BaseRepository.ts", []byte(baseRepositoryContent), 0644)
+// TODO: CREATE BASE REPOSITORY
+println(baseRepositoryContent)
+	// os.WriteFile("src/shared/database/repository/BaseRepository.ts", []byte(baseRepositoryContent), 0644)
 }
 
 // createGitignore cria o arquivo .gitignore
@@ -368,7 +390,7 @@ func createMainFile(useGraphQL bool, useWebSocket bool) {
 	mainFileContent := `import "reflect-metadata";
 import "dotenv/config";
 import express from "express";
-import { AppRouter } from "@http/routes";
+import { AppRouter, PublicRouter } from "@http/routes";
 import { AppDataSource } from "@shared/database/dataSource";
 import { Logger } from "@shared/logger";
 import { authMiddleware } from "@shared/middleware/auth";
@@ -383,7 +405,7 @@ import { buildSchema } from "graphql";
 
 	if useWebSocket {
 		mainFileContent += `import { Server } from "socket.io";
-import http from "http";
+import http from "node:http";
 `
 	}
 
@@ -391,6 +413,7 @@ import http from "http";
 const PORT = process.env.PORT || 3000;
 
 app.use(express.json());
+app.use(PublicRouter);
 app.use(authMiddleware);
 app.use("/api", AppRouter);
 `
@@ -595,7 +618,7 @@ func setupPackageJSONScripts() {
 
 	packageJSONContent := string(packageJSONFile)
 	packageJSONContent = strings.Replace(packageJSONContent, `"test": "echo \"Error: no test specified\" && exit 1"`, `"dev": "tsx watch src/main/main.ts",
-    "build": "tsc",
+    "build": "tsc && tsc-alias",
     "start": "node dist/main/main.js",
     "lint": "eslint 'src/**/*.ts'"`, 1)
 
@@ -701,13 +724,17 @@ func setupAuthMiddleware() {
 import { Request, Response, NextFunction } from "express";
 import { verifyToken } from "@utils/jwt";
 
-export function authMiddleware(req: Request, res: Response, next: NextFunction): void {
+export function authMiddleware(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): void {
   const authHeader = req.headers["authorization"];
   const token = authHeader && authHeader.split(" ")[1];
 
   if (!token) {
     res.status(401).json({ message: "Token não fornecido" });
-	return;
+    return;
   }
 
   try {
@@ -716,11 +743,47 @@ export function authMiddleware(req: Request, res: Response, next: NextFunction):
     next();
   } catch (error) {
     res.status(403).json({ message: "Token inválido" });
-	return;
+    return;
   }
-}
-`
+}`
 	os.WriteFile("src/shared/middleware/auth.ts", []byte(authMiddlewareContent), 0644)
+}
+
+func setupValidationDtoMiddleware() {
+  validationMiddlewareContent := `/* eslint-disable @typescript-eslint/no-explicit-any */
+import { plainToInstance } from "class-transformer";
+import { validate } from "class-validator";
+import { NextFunction, Request, Response } from "express";
+
+export function validationMiddlewareDto(dtoClass: any): any {
+  return async (
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ): Promise<any> => {
+    const dtoInstance = plainToInstance(dtoClass, req.body);
+    const errors = await validate(dtoInstance);
+
+    if (errors.length > 0) {
+      const formattedErrors = errors.map((err) => ({
+        field: err.property,
+        errors: Object.values(err.constraints || {}),
+      }));
+
+      return res.status(400).json({
+        statusCode: 400,
+        message: "Validation failed",
+        errors: formattedErrors,
+        timestamp: new Date().toISOString(),
+        path: req.originalUrl,
+      });
+    }
+
+    next();
+  };
+};
+`
+  os.WriteFile("src/shared/middleware/validation.ts", []byte(validationMiddlewareContent), 0644)
 }
 
 // setupExampleModules cria exemplos de entidades, repositórios, serviços e rotas com autenticação
@@ -748,12 +811,43 @@ export class User extends BaseSchema {
 }
 `
 	os.MkdirAll("src/modules/user/entities", 0755)
+  os.MkdirAll("src/modules/user/dto", 0755)
+
+  registerUserDtoContent := `import { IsEmail, IsString, MinLength } from "class-validator";
+
+export class RegisterUserDto {
+  @IsEmail()
+  email: string;
+
+  @IsString()
+  @MinLength(10)
+  name: string;
+
+  @IsString()
+  @MinLength(6)
+  password: string;
+}
+`
+
+  loginUserDtoContent := `import { IsString } from "class-validator";
+
+export class LoginUserDto {
+  @IsString()
+  email: string;
+
+  @IsString()
+  password: string;
+}
+`
+  os.WriteFile("src/modules/user/dto/register-user.dto.ts", []byte(registerUserDtoContent), 0644)
+  os.WriteFile("src/modules/user/dto/login-user.dto.ts", []byte(loginUserDtoContent), 0644)
 	os.WriteFile("src/modules/user/entities/User.ts", []byte(entityContent), 0644)
 
 	// Repositório
 	repositoryContent := `import { Repository } from "typeorm";
 import { User } from "../entities/User";
 import { AppDataSource } from "@shared/database/dataSource";
+import { whereId } from "@utils/where-id";
 
 export class UserRepository extends Repository<User> {
   constructor() {
@@ -763,7 +857,12 @@ export class UserRepository extends Repository<User> {
   async findByEmail(email: string): Promise<User | null> {
     return this.findOne({ where: { email } });
   }
+
+  async findById(id: Id): Promise<User | null> {
+    return this.findOne({ where: whereId(id) });
+  }
 }
+
 `
 	os.MkdirAll("src/modules/user/repositories", 0755)
 	os.WriteFile("src/modules/user/repositories/UserRepository.ts", []byte(repositoryContent), 0644)
@@ -773,14 +872,16 @@ export class UserRepository extends Repository<User> {
 import { User } from "../entities/User";
 import bcrypt from "bcryptjs";
 import { generateToken } from "@utils/jwt";
+import { LoginUserDto } from "../dto/login-user.dto";
+import { RegisterUserDto } from "../dto/register-user.dto";
 
 export class UserService {
   constructor(private userRepository: UserRepository) {}
 
-  async createUser(data: Partial<User>): Promise<User> {
+  async createUser(data: RegisterUserDto): Promise<User> {
     const existingUser = await this.userRepository.findByEmail(
-	  data.email as string
-	);
+      data.email as string,
+    );
 
     if (existingUser) {
       throw new Error("Usuário já existe com este email");
@@ -794,10 +895,7 @@ export class UserService {
     return await this.userRepository.find();
   }
 
-  async authenticateUser(data: { 
-	email: string; 
-	password: string 
-  }): Promise<string> {
+  async authenticateUser(data: LoginUserDto): Promise<string> {
     const user = await this.userRepository.findByEmail(data.email);
     if (!user) {
       throw new Error("Usuário não encontrado");
@@ -811,48 +909,100 @@ export class UserService {
     const token = generateToken({ id: user.id, email: user.email });
     return token;
   }
-}
-`
+
+  async getUserById(id: Id): Promise<User | null> {
+    return await this.userRepository.findById(id);
+  }
+
+  async getUserByEmail(email: string): Promise<User | null> {
+    return await this.userRepository.findByEmail(email);
+  }
+
+  async deleteUserById(id: Id) {
+    const user = await this.getUserById(id);
+    return await this.userRepository.softDelete(user!.id);
+  }
+}`
 	os.MkdirAll("src/modules/user/services", 0755)
 	os.WriteFile("src/modules/user/services/UserService.ts", []byte(serviceContent), 0644)
 
 	// Rotas
-	routesContent := `import { Router } from "express";
+	userRoutesContent := `import { Router } from "express";
 import { UserController } from "@http/controllers/UserController";
 
 const userController = new UserController();
 const router = Router();
 
-router.post("/register", (req, res) => {
-  userController.create(req, res);
-});
-router.post("/login", (req, res) => {
-  userController.login(req, res);
-});
 router.get("/", (req, res) => {
   userController.getAll(req, res);
 });
 
+router.get("/:id", (req, res) => {
+  userController.getById(req, res);
+});
+
+router.delete("/:id", (req, res) => {
+  userController.deleteById(req, res);
+});
+
+router.get("/email/:email", (req, res) => {
+  userController.getByEmail(req, res);
+});
+
 export default router;
+
 `
-	os.WriteFile("src/http/routes/userRoutes.ts", []byte(routesContent), 0644)
+	os.WriteFile("src/http/routes/userRoutes.ts", []byte(userRoutesContent), 0644)
 
 	// Rotas principais
 	indexRoutesContent := `import { Router } from "express";
+import authRoutes from "./authRoutes";
 import userRoutes from "./userRoutes";
 
 export const AppRouter = Router();
 
 AppRouter.use("/users", userRoutes);
+
+export const PublicRouter = Router();
+
+PublicRouter.use("/auth", authRoutes);
 `
 	os.WriteFile("src/http/routes/index.ts", []byte(indexRoutesContent), 0644)
+
+
+  // Rotas de autenticação
+  authRoutesContent := `import { Router } from "express";
+import { AuthController } from "@http/controllers/AuthController";
+import { validationMiddlewareDto } from "@shared/middleware/validation";
+import { RegisterUserDto } from "@modules/user/dto/register-user.dto";
+import { LoginUserDto } from "@modules/user/dto/login-user.dto";
+
+const authController = new AuthController();
+const router = Router();
+
+router.post(
+  "/register",
+  validationMiddlewareDto(RegisterUserDto),
+  (req, res) => {
+    authController.register(req, res);
+  },
+);
+router.post("/login", validationMiddlewareDto(LoginUserDto), (req, res) => {
+  authController.login(req, res);
+});
+
+export default router;
+
+`
+
+  os.WriteFile("src/http/routes/authRoutes.ts", []byte(authRoutesContent), 0644)
 }
 
 // installDependencies instala todas as dependências necessárias
 func installDependencies(options map[string]bool) {
 	// Dependências base
 	runCommand("npm", "install", "express", "reflect-metadata", "winston", "dotenv", "bcryptjs", "jsonwebtoken")
-	runCommand("npm", "install", "-D", "typescript", "ts-node", "ts-node-dev", "tsx" ,"@types/node", "@types/express", "@types/bcryptjs", "@types/jsonwebtoken", "eslint", "prettier", "husky", "@typescript-eslint/parser", "@typescript-eslint/eslint-plugin", "eslint-config-prettier", "eslint-plugin-prettier", "class-validator", "class-transformer")
+	runCommand("npm", "install", "-D", "typescript", "ts-node", "ts-node-dev", "tsx", "tsc-alias" ,"@types/node", "@types/express", "@types/bcryptjs", "@types/jsonwebtoken", "eslint@9.14.0", "prettier", "husky", "@typescript-eslint/parser", "@typescript-eslint/eslint-plugin", "eslint-config-prettier", "eslint-plugin-prettier", "class-validator", "class-transformer")
 
 	// Instala dependências opcionais com base nas escolhas do usuário
 	if options["typeorm"] {
@@ -905,6 +1055,8 @@ func setupExpressProject(projectName string) {
 	// Adicionar JWT e Middleware de Autenticação
 	setupJWT()
 	setupAuthMiddleware()
+
+  setupValidationDtoMiddleware()
 
 	// Passo 4: Inicializar git e configurar linting
 	setupGit()
